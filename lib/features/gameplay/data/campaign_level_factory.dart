@@ -68,7 +68,9 @@ class CampaignLevelFactory {
   }
 
   _LevelSpec _specFor(int n) {
+    // Designed progression for a satisfying first 50 levels, then ramps up.
     if (n <= 10) {
+      // 4x4 tutorial — introduce colors gradually
       final colors = n <= 2
           ? 1
           : n <= 7
@@ -83,15 +85,17 @@ class CampaignLevelFactory {
       );
     }
     if (n <= 20) {
+      // 5x5 easy — mostly 2 colors, then 3
       return _LevelSpec(
         rows: 5,
         cols: 5,
-        colors: n <= 15 ? 2 : 3,
+        colors: n <= 16 ? 2 : 3,
         difficulty: Difficulty.easy,
-        targetMoves: n <= 15 ? 4 : 5,
+        targetMoves: n <= 16 ? 4 : 5,
       );
     }
     if (n <= 30) {
+      // 5x5 medium — solid 3-color practice
       return _LevelSpec(
         rows: 5,
         cols: 5,
@@ -101,20 +105,22 @@ class CampaignLevelFactory {
       );
     }
     if (n <= 40) {
+      // 6x6 medium — 3 then 4 colors
       return _LevelSpec(
         rows: 6,
         cols: 6,
         colors: n <= 35 ? 3 : 4,
         difficulty: Difficulty.medium,
-        targetMoves: n <= 35 ? 5 : 6,
+        targetMoves: n <= 35 ? 6 : 7,
       );
     }
     if (n <= 50) {
+      // 6x6 milestone block — 4 colors, still no blocked cells
       return _LevelSpec(
         rows: 6,
         cols: 6,
         colors: 4,
-        difficulty: n <= 45 ? Difficulty.medium : Difficulty.hard,
+        difficulty: Difficulty.medium,
         targetMoves: 7,
       );
     }

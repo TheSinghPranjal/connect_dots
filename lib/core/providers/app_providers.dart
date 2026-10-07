@@ -154,10 +154,10 @@ class ProgressController extends AsyncNotifier<PlayerProgressState> {
       bestTime: bestTime,
     );
 
-    final nextUnlocked = (levelId + 1).clamp(1, totalLevels + 1);
+    final nextUnlocked = levelId >= totalLevels ? totalLevels : levelId + 1;
     final highest = current.highestUnlockedLevel > nextUnlocked
         ? current.highestUnlockedLevel
-        : nextUnlocked.clamp(1, totalLevels);
+        : nextUnlocked;
 
     await _save(
       current.copyWith(

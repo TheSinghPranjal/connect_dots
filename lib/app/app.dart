@@ -19,7 +19,10 @@ class FlowDotsApp extends ConsumerWidget {
       theme: AppTheme.light(),
       darkTheme: AppTheme.dark(),
       themeMode: settings.flutterThemeMode,
-      initialRoute: '/home',
+      // A single initial route; `initialRoute` would also push '/' beneath it.
+      onGenerateInitialRoutes: (_) => [
+        AppRouter.onGenerateRoute(const RouteSettings(name: '/splash')),
+      ],
       onGenerateRoute: AppRouter.onGenerateRoute,
     );
   }

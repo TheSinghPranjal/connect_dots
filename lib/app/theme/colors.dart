@@ -31,7 +31,7 @@ class AppColors {
   static Color gameplayColor(ColorId id) {
     switch (id) {
       case ColorId.red:
-        return const Color(0xFFE11D48);
+        return const Color(0xFFFF2D68);
       case ColorId.blue:
         return const Color(0xFF2563EB);
       case ColorId.green:
@@ -84,8 +84,8 @@ class BoardVisualConfig {
         blockedFill: AppColors.lightBlocked,
         backgroundTop: AppColors.lightBackgroundTop,
         backgroundBottom: AppColors.lightBackgroundBottom,
-        pathWidthFactor: 0.38,
-        endpointRadiusFactor: 0.32,
+        pathWidthFactor: 0.4,
+        endpointRadiusFactor: 0.4,
       );
 
   factory BoardVisualConfig.dark() => const BoardVisualConfig(

@@ -7,6 +7,7 @@ import '../../../../core/geometry/grid_geometry.dart';
 import '../../domain/models/board_state.dart';
 import '../../domain/models/color_id.dart';
 import '../../domain/models/grid_position.dart';
+import '../widgets/sky_style.dart';
 
 class BoardPainter extends CustomPainter {
   BoardPainter({
@@ -18,6 +19,7 @@ class BoardPainter extends CustomPainter {
     required this.reducedMotion,
     this.fingerPosition,
     this.glowPhase = 0,
+    this.flat = false,
   });
 
   final BoardState board;
@@ -28,6 +30,9 @@ class BoardPainter extends CustomPainter {
   final bool reducedMotion;
   final Offset? fingerPosition;
   final double glowPhase;
+
+  /// Flat white grid with ring-style endpoints (daily challenge look).
+  final bool flat;
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -50,52 +55,118 @@ class BoardPainter extends CustomPainter {
   }
 
   void _paintBoardBackground(Canvas canvas, Size size) {
-    final rrect = RRect.fromRectAndRadius(
-      Offset.zero & size,
-      const Radius.circular(20),
-    );
-    canvas.drawRRect(
-      rrect,
-      Paint()..color = visual.boardFill,
-    );
-    canvas.drawRRect(
-      rrect,
-      Paint()
-        ..color = visual.gridLine.withValues(alpha: 0.35)
-        ..style = PaintingStyle.stroke
-        ..strokeWidth = 1.5,
-    );
-  }
-
-  void _paintGrid(Canvas canvas, GridGeometry geometry) {
-    final paint = Paint()
-      ..color = visual.gridLine.withValues(alpha: 0.55)
-      ..strokeWidth = 1;
-
-    for (var r = 0; r <= board.rows; r++) {
-      final y = r * geometry.cellHeight;
-      canvas.drawLine(Offset(0, y), Offset(geometry.boardSize, y), paint);
-    }
-    for (var c = 0; c <= board.columns; c++) {
-      final x = c * geometry.cellWidth;
-      canvas.drawLine(Offset(x, 0), Offset(x, geometry.boardSize), paint);
-    }
-  }
-
-  void _paintBlocked(Canvas canvas, GridGeometry geometry) {
-    final paint = Paint()..color = visual.blockedFill.withValues(alpha: 0.55);
-    for (final cell in board.level.blockedCells) {
-      final rect = geometry.cellRect(cell, inset: geometry.cellWidth * 0.12);
+    if (flat) {
       canvas.drawRRect(
-        RRect.fromRectAndRadius(rect, Radius.circular(rect.width * 0.2)),
-        paint,
+        RRect.fromRectAndRadius(
+          Offset.zero & size,
+          Radius.circular(size.width * 0.03),
+        ),
+        Paint()..color = const Color(0xFFFBFCFF),
       );
-      // Hatch
-      final hatch = Paint()
-        ..color = visual.blockedFill
-        ..strokeWidth = 1.5;
-      canvas.drawLine(rect.topLeft, rect.bottomRight, hatch);
-      canvas.drawLine(rect.topRight, rect.bottomLeft, hatch);
+      return;
+    }
+    canvas.drawRRect(
+      RRect.fromRectAndRadius(
+        Offset.zero & size,
+        Radius.circular(size.width * 0.045),
+      ),
+      Paint()..color = SkyStyle.tileGap,
+    );
+  }
+
+  /// Soft, slightly raised tiles like frosted sugar cubes.
+  void _paintGrid(Canvas canvas, GridGeometry geometry) {
+    if (flat) {
+      final line = Paint()
+        ..color = const Color(0xFFD8DFEC)
+        ..strokeWidth = 1.2;
+      for (var r = 1; r < board.rows; r++) {
+        final y = r * geometry.cellHeight;
+        canvas.drawLine(Offset(0, y), Offset(geometry.boardSize, y), line);
+      }
+      for (var c = 1; c < board.columns; c++) {
+        final x = c * geometry.cellWidth;
+        canvas.drawLine(Offset(x, 0), Offset(x, geometry.boardSize), line);
+      }
+      return;
+    }
+    final endpointTint = <GridPosition, Color>{
+      for (final ep in board.level.endpoints)
+        ep.position: AppColors.gameplayColor(ep.color),
+    };
+    final inset = geometry.cellWidth * 0.025;
+    final radius = Radius.circular(geometry.cellWidth * 0.12);
+    final edge = geometry.cellWidth * 0.035;
+
+    for (var r = 0; r < board.rows; r++) {
+      for (var c = 0; c < board.columns; c++) {
+        final pos = GridPosition(r, c);
+        final rect = geometry.cellRect(pos, inset: inset);
+        final tint = endpointTint[pos];
+
+        canvas.drawRRect(
+          RRect.fromRectAndRadius(rect, radius),
+          Paint()
+            ..color = tint == null
+                ? SkyStyle.tileEdge
+                : Color.lerp(SkyStyle.tileEdge, tint, 0.25)!,
+        );
+        final face = Rect.fromLTRB(
+          rect.left,
+          rect.top,
+          rect.right,
+          rect.bottom - edge,
+        );
+        final top = tint == null
+            ? SkyStyle.tileTop
+            : Color.lerp(SkyStyle.tileTop, tint, 0.12)!;
+        final bottom = tint == null
+            ? SkyStyle.tileBottom
+            : Color.lerp(SkyStyle.tileBottom, tint, 0.2)!;
+        canvas.drawRRect(
+          RRect.fromRectAndRadius(face, radius),
+          Paint()
+            ..shader = LinearGradient(
+              begin: Alignment.topCenter,
+              end: Alignment.bottomCenter,
+              colors: [top, bottom],
+            ).createShader(face),
+        );
+      }
+    }
+  }
+
+  /// Grey stone tiles marked with an X.
+  void _paintBlocked(Canvas canvas, GridGeometry geometry) {
+    for (final cell in board.level.blockedCells) {
+      final rect = geometry.cellRect(cell, inset: geometry.cellWidth * 0.08);
+      final radius = Radius.circular(rect.width * 0.12);
+      canvas.drawRRect(
+        RRect.fromRectAndRadius(rect.shift(const Offset(0, 2)), radius),
+        Paint()..color = const Color(0xFF7D8696),
+      );
+      canvas.drawRRect(
+        RRect.fromRectAndRadius(rect, radius),
+        Paint()
+          ..shader = const LinearGradient(
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+            colors: [Color(0xFFC9CFD9), Color(0xFF9CA5B4)],
+          ).createShader(rect),
+      );
+      canvas.drawRRect(
+        RRect.fromRectAndRadius(rect.deflate(1), radius),
+        Paint()
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = 1.5
+          ..color = const Color(0xFF8A93A3),
+      );
+      final x = Paint()
+        ..color = const Color(0xFF7A8393)
+        ..strokeWidth = 1.6;
+      final inner = rect.deflate(rect.width * 0.06);
+      canvas.drawLine(inner.topLeft, inner.bottomRight, x);
+      canvas.drawLine(inner.topRight, inner.bottomLeft, x);
     }
   }
 
@@ -109,11 +180,7 @@ class BoardPainter extends CustomPainter {
         radius * 1.6,
         Paint()..color = AppColors.brandAmber.withValues(alpha: 0.25),
       );
-      canvas.drawCircle(
-        center,
-        radius,
-        Paint()..color = AppColors.brandAmber,
-      );
+      canvas.drawCircle(center, radius, Paint()..color = AppColors.brandAmber);
     }
   }
 
@@ -157,54 +224,71 @@ class BoardPainter extends CustomPainter {
   }) {
     if (cells.isEmpty) return;
 
-    final points = <Offset>[
-      for (final c in cells) geometry.cellToCenter(c),
-    ];
+    final points = <Offset>[for (final c in cells) geometry.cellToCenter(c)];
     if (isActive && finger != null && points.isNotEmpty) {
       points.add(finger);
     }
 
     final base = AppColors.gameplayColor(color);
-    final width = geometry.cellWidth *
-        visual.pathWidthFactor *
-        (isActive ? 1.08 : 1.0);
+    final width =
+        geometry.cellWidth * visual.pathWidthFactor * (isActive ? 1.06 : 1.0);
 
-    if (!reducedMotion && (isActive || isComplete)) {
-      final glow = Paint()
-        ..color = AppColors.gameplayGlow(color)
-        ..strokeWidth = width * 1.55
-        ..strokeCap = StrokeCap.round
-        ..strokeJoin = StrokeJoin.round
-        ..style = PaintingStyle.stroke
-        ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 6);
-      _strokePoints(canvas, points, glow);
+    Paint stroke(Color c, double w) => Paint()
+      ..color = c
+      ..strokeWidth = w
+      ..strokeCap = StrokeCap.round
+      ..strokeJoin = StrokeJoin.round
+      ..style = PaintingStyle.stroke;
+
+    if (!reducedMotion) {
+      _strokePoints(
+        canvas,
+        points,
+        stroke(
+          base.withValues(alpha: isActive || isComplete ? 0.45 : 0.3),
+          width * 1.5,
+        )..maskFilter = MaskFilter.blur(BlurStyle.normal, width * 0.25),
+      );
     }
 
-    final body = Paint()
-      ..color = isActive ? AppColors.gameplayLight(color) : base
-      ..strokeWidth = width
-      ..strokeCap = StrokeCap.round
-      ..strokeJoin = StrokeJoin.round
-      ..style = PaintingStyle.stroke;
-    _strokePoints(canvas, points, body);
-
-    final core = Paint()
-      ..color = Colors.white.withValues(alpha: isActive ? 0.35 : 0.18)
-      ..strokeWidth = width * 0.35
-      ..strokeCap = StrokeCap.round
-      ..strokeJoin = StrokeJoin.round
-      ..style = PaintingStyle.stroke;
-    _strokePoints(canvas, points, core);
+    // Glossy tube: saturated rim, lighter core, specular streak.
+    _strokePoints(canvas, points, stroke(base, width));
+    _strokePoints(
+      canvas,
+      points,
+      stroke(Color.lerp(base, Colors.white, 0.2)!, width * 0.62),
+    );
+    _strokePoints(
+      canvas,
+      points,
+      stroke(
+        Colors.white.withValues(alpha: isActive ? 0.4 : 0.28),
+        width * 0.18,
+      ),
+      offset: Offset(-width * 0.12, -width * 0.12),
+    );
   }
 
-  void _strokePoints(Canvas canvas, List<Offset> points, Paint paint) {
+  void _strokePoints(
+    Canvas canvas,
+    List<Offset> points,
+    Paint paint, {
+    Offset offset = Offset.zero,
+  }) {
     if (points.length == 1) {
-      canvas.drawCircle(points.first, paint.strokeWidth / 2, Paint()..color = paint.color);
+      canvas.drawCircle(
+        points.first + offset,
+        paint.strokeWidth / 2,
+        Paint()
+          ..color = paint.color
+          ..maskFilter = paint.maskFilter,
+      );
       return;
     }
-    final path = Path()..moveTo(points.first.dx, points.first.dy);
+    final path = Path()
+      ..moveTo(points.first.dx + offset.dx, points.first.dy + offset.dy);
     for (var i = 1; i < points.length; i++) {
-      path.lineTo(points[i].dx, points[i].dy);
+      path.lineTo(points[i].dx + offset.dx, points[i].dy + offset.dy);
     }
     canvas.drawPath(path, paint);
   }
@@ -216,25 +300,78 @@ class BoardPainter extends CustomPainter {
       final color = AppColors.gameplayColor(ep.color);
       final path = board.pathForColor(ep.color);
       final connected = path?.isComplete ?? false;
-      final isActiveStart = board.activeColor == ep.color &&
+      final isActiveStart =
+          board.activeColor == ep.color &&
           board.activePathCells.isNotEmpty &&
           board.activePathCells.first == ep.position;
 
-      if (!reducedMotion) {
-        final pulse = isActiveStart ? (0.15 + 0.1 * math.sin(glowPhase * math.pi * 2)) : 0.12;
+      if (flat) {
+        _paintRingEndpoint(
+          canvas,
+          center,
+          geometry.cellWidth * 0.44,
+          ep.color,
+          isActiveStart,
+        );
+      } else {
+        if (!reducedMotion && isActiveStart) {
+          final pulse = 0.15 + 0.1 * math.sin(glowPhase * math.pi * 2);
+          canvas.drawCircle(
+            center,
+            radius * (1.2 + pulse),
+            Paint()..color = color.withValues(alpha: 0.3),
+          );
+        }
+
+        // Drop shadow
+        canvas.drawCircle(
+          center + Offset(0, radius * 0.12),
+          radius,
+          Paint()
+            ..color = AppColors.gameplayDark(ep.color).withValues(alpha: 0.45)
+            ..maskFilter = MaskFilter.blur(BlurStyle.normal, radius * 0.15),
+        );
+
+        // Glossy sphere
+        final ball = Rect.fromCircle(center: center, radius: radius);
         canvas.drawCircle(
           center,
-          radius * (1.35 + pulse),
-          Paint()..color = color.withValues(alpha: 0.28),
+          radius,
+          Paint()
+            ..shader = RadialGradient(
+              center: const Alignment(-0.3, -0.35),
+              radius: 1.0,
+              colors: [
+                Color.lerp(color, Colors.white, 0.3)!,
+                color,
+                AppColors.gameplayDark(ep.color),
+              ],
+              stops: const [0.0, 0.6, 1.0],
+            ).createShader(ball),
         );
-      }
 
-      canvas.drawCircle(center, radius, Paint()..color = color);
-      canvas.drawCircle(
-        center,
-        radius * 0.55,
-        Paint()..color = Colors.white.withValues(alpha: connected ? 0.85 : 0.55),
-      );
+        // Soft inner bubble
+        canvas.drawCircle(
+          center + Offset(-radius * 0.02, radius * 0.02),
+          radius * 0.34,
+          Paint()
+            ..color = Colors.white.withValues(alpha: connected ? 0.4 : 0.28),
+        );
+
+        // Specular highlight
+        canvas.save();
+        canvas.translate(center.dx - radius * 0.42, center.dy - radius * 0.5);
+        canvas.rotate(-0.5);
+        canvas.drawOval(
+          Rect.fromCenter(
+            center: Offset.zero,
+            width: radius * 0.55,
+            height: radius * 0.32,
+          ),
+          Paint()..color = Colors.white.withValues(alpha: 0.9),
+        );
+        canvas.restore();
+      }
 
       if (colorAssist) {
         final tp = TextPainter(
@@ -251,6 +388,63 @@ class BoardPainter extends CustomPainter {
         tp.paint(canvas, center - Offset(tp.width / 2, tp.height / 2));
       }
     }
+  }
+
+  /// Glossy disc with a pale halo and a light core.
+  void _paintRingEndpoint(
+    Canvas canvas,
+    Offset center,
+    double radius,
+    ColorId id,
+    bool active,
+  ) {
+    final color = AppColors.gameplayColor(id);
+    final pulse = !reducedMotion && active
+        ? 0.06 * math.sin(glowPhase * math.pi * 2)
+        : 0.0;
+    canvas.drawCircle(
+      center,
+      radius * (1.0 + pulse),
+      Paint()..color = Color.lerp(color, Colors.white, 0.62)!,
+    );
+    final disc = radius * 0.74;
+    canvas.drawCircle(
+      center + Offset(0, disc * 0.06),
+      disc,
+      Paint()..color = AppColors.gameplayDark(id).withValues(alpha: 0.5),
+    );
+    canvas.drawCircle(
+      center,
+      disc,
+      Paint()
+        ..shader = RadialGradient(
+          center: const Alignment(-0.25, -0.3),
+          colors: [
+            Color.lerp(color, Colors.white, 0.25)!,
+            color,
+            AppColors.gameplayDark(id),
+          ],
+          stops: const [0.0, 0.65, 1.0],
+        ).createShader(Rect.fromCircle(center: center, radius: disc)),
+    );
+    final core = disc * 0.45;
+    canvas.drawCircle(
+      center,
+      core,
+      Paint()
+        ..shader = RadialGradient(
+          center: const Alignment(-0.3, -0.35),
+          colors: [
+            Color.lerp(color, Colors.white, 0.75)!,
+            Color.lerp(color, Colors.white, 0.3)!,
+          ],
+        ).createShader(Rect.fromCircle(center: center, radius: core)),
+    );
+    canvas.drawCircle(
+      center + Offset(-core * 0.35, -core * 0.4),
+      core * 0.28,
+      Paint()..color = Colors.white.withValues(alpha: 0.8),
+    );
   }
 
   void _paintHints(Canvas canvas, GridGeometry geometry) {
@@ -270,7 +464,10 @@ class BoardPainter extends CustomPainter {
 
   void _paintInvalid(Canvas canvas, GridGeometry geometry) {
     if (invalidCell == null) return;
-    final rect = geometry.cellRect(invalidCell!, inset: geometry.cellWidth * 0.15);
+    final rect = geometry.cellRect(
+      invalidCell!,
+      inset: geometry.cellWidth * 0.15,
+    );
     canvas.drawRRect(
       RRect.fromRectAndRadius(rect, Radius.circular(rect.width * 0.2)),
       Paint()..color = AppColors.brandCoral.withValues(alpha: 0.3),
@@ -285,6 +482,7 @@ class BoardPainter extends CustomPainter {
         oldDelegate.invalidCell != invalidCell ||
         oldDelegate.fingerPosition != fingerPosition ||
         oldDelegate.glowPhase != glowPhase ||
-        oldDelegate.visual != visual;
+        oldDelegate.visual != visual ||
+        oldDelegate.flat != flat;
   }
 }
