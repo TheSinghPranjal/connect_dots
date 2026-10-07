@@ -5,6 +5,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'app/app.dart';
 import 'core/audio/audio_manager.dart';
 import 'core/providers/app_providers.dart';
+import 'features/splash/presentation/splash_screen.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -49,9 +50,8 @@ class _BootstrapState extends ConsumerState<_Bootstrap> {
     return progress.when(
       data: (_) => widget.child,
       loading: () => const MaterialApp(
-        home: Scaffold(
-          body: Center(child: CircularProgressIndicator()),
-        ),
+        debugShowCheckedModeBanner: false,
+        home: SplashScreen(autoNavigate: false),
       ),
       error: (e, _) => MaterialApp(
         home: Scaffold(

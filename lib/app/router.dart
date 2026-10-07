@@ -6,12 +6,16 @@ import '../features/home/presentation/home_screen.dart';
 import '../features/how_to_play/presentation/how_to_play_screen.dart';
 import '../features/level_selection/presentation/level_selection_screen.dart';
 import '../features/settings/presentation/settings_screen.dart';
+import '../features/splash/presentation/splash_screen.dart';
 import '../features/stats/presentation/stats_screen.dart';
 
 class AppRouter {
   static Route<dynamic> onGenerateRoute(RouteSettings settings) {
     final name = settings.name ?? '/home';
 
+    if (name == '/splash') {
+      return _fade(const SplashScreen(), name);
+    }
     if (name == '/' || name == '/home') {
       return _fade(const HomeScreen(), name);
     }
@@ -29,6 +33,12 @@ class AppRouter {
     }
     if (name == '/daily') {
       return _fade(const DailyChallengeScreen(), name);
+    }
+
+    final dailyMatch = RegExp(r'^/daily/game/(\d+)$').firstMatch(name);
+    if (dailyMatch != null) {
+      final id = int.parse(dailyMatch.group(1)!);
+      return _fade(GameplayScreen(levelId: id, daily: true), name);
     }
 
     final gameMatch = RegExp(r'^/game/(\d+)$').firstMatch(name);
