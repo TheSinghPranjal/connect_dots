@@ -2,17 +2,22 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../../app/theme/colors.dart';
-import '../../../../app/theme/dimensions.dart';
 import '../../../../core/constants/game_constants.dart';
+import '../../../../core/providers/app_providers.dart';
 import '../../domain/models/cell_type.dart';
 import '../../domain/models/game_session_state.dart';
 import '../../providers/game_controller.dart';
 import '../widgets/game_board.dart';
+import '../widgets/level_complete_dialog.dart';
+import '../widgets/sky_style.dart';
 
 class GameplayScreen extends ConsumerStatefulWidget {
-  const GameplayScreen({super.key, required this.levelId});
+  const GameplayScreen({super.key, required this.levelId, this.daily = false});
 
   final int levelId;
+
+  /// Daily challenge runs use the wooden-sign / flat-grid look.
+  final bool daily;
 
   @override
   ConsumerState<GameplayScreen> createState() => _GameplayScreenState();
@@ -22,12 +27,24 @@ class _GameplayScreenState extends ConsumerState<GameplayScreen>
     with WidgetsBindingObserver {
   var _loading = true;
   String? _error;
+  var _showingOverlay = false;
+  late int _currentLevelId;
 
   @override
   void initState() {
     super.initState();
+    _currentLevelId = widget.levelId;
     WidgetsBinding.instance.addObserver(this);
-    _load();
+    _load(_currentLevelId);
+  }
+
+  @override
+  void didUpdateWidget(covariant GameplayScreen oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.levelId != widget.levelId) {
+      _currentLevelId = widget.levelId;
+      _load(_currentLevelId);
+    }
   }
 
   @override
@@ -45,15 +62,18 @@ class _GameplayScreenState extends ConsumerState<GameplayScreen>
     }
   }
 
-  Future<void> _load() async {
+  Future<void> _load(int levelId) async {
     setState(() {
       _loading = true;
       _error = null;
+      _showingOverlay = false;
     });
     try {
-      await ref.read(gameControllerProvider.notifier).loadLevel(widget.levelId);
+      await ref.read(gameControllerProvider.notifier).loadLevel(levelId);
+      if (!mounted) return;
       setState(() => _loading = false);
     } catch (e) {
+      if (!mounted) return;
       setState(() {
         _loading = false;
         _error = 'Unable to load this puzzle.';
@@ -61,128 +81,177 @@ class _GameplayScreenState extends ConsumerState<GameplayScreen>
     }
   }
 
+  Future<void> _goToNextLevel(int nextLevel) async {
+    if (nextLevel < 1 || nextLevel > GameConstants.totalCampaignLevels) {
+      if (mounted) Navigator.of(context).pop();
+      return;
+    }
+    _currentLevelId = nextLevel;
+    await _load(nextLevel);
+  }
+
   @override
   Widget build(BuildContext context) {
     final session = ref.watch(gameControllerProvider);
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    final top = isDark ? AppColors.darkBackgroundTop : AppColors.lightBackgroundTop;
-    final bottom =
-        isDark ? AppColors.darkBackgroundBottom : AppColors.lightBackgroundBottom;
-
     ref.listen(gameControllerProvider, (prev, next) {
+      if (!mounted || _showingOverlay) return;
       if (next?.status == GameplayStatus.completed &&
           prev?.status != GameplayStatus.completed) {
+        _showingOverlay = true;
         _showComplete(next!);
       } else if (next?.status == GameplayStatus.failed &&
           prev?.status != GameplayStatus.failed) {
+        _showingOverlay = true;
         _showFailed(next!);
       } else if (next?.status == GameplayStatus.paused &&
           prev?.status != GameplayStatus.paused &&
           prev?.status == GameplayStatus.playing) {
+        _showingOverlay = true;
         _showPause();
       }
     });
 
     return Scaffold(
-      body: DecoratedBox(
-        decoration: BoxDecoration(
-          gradient: LinearGradient(
-            begin: Alignment.topCenter,
-            end: Alignment.bottomCenter,
-            colors: [top, bottom],
-          ),
-        ),
-        child: _loading
-            ? const Center(child: CircularProgressIndicator())
-            : _error != null
-                ? _ErrorBody(message: _error!, onRetry: _load, onLevels: () {
-                    Navigator.of(context).pop();
-                  })
-                : Column(
-                    children: [
-                      GameHud(
-                        onBack: () => Navigator.of(context).pop(),
-                        onPause: () =>
-                            ref.read(gameControllerProvider.notifier).pause(),
-                      ),
-                      if (session?.score.comboMultiplier != null &&
-                          session!.score.comboMultiplier > 1)
-                        Padding(
-                          padding: const EdgeInsets.only(bottom: 4),
-                          child: Text(
-                            'COMBO x${session.score.comboMultiplier}',
-                            style: Theme.of(context)
-                                .textTheme
-                                .labelLarge
-                                ?.copyWith(color: AppColors.brandAmber),
-                          ),
+      body: Stack(
+        fit: StackFit.expand,
+        children: [
+          Image.asset(SkyStyle.background, fit: BoxFit.cover),
+          if (_loading)
+            const Center(child: CircularProgressIndicator())
+          else if (_error != null)
+            _ErrorBody(
+              message: _error!,
+              onRetry: () => _load(_currentLevelId),
+              onLevels: () => Navigator.of(context).pop(),
+            )
+          else
+            Column(
+              children: [
+                GameHud(
+                  daily: widget.daily,
+                  onBack: () => Navigator.of(context).pop(),
+                  onPause: () =>
+                      ref.read(gameControllerProvider.notifier).pause(),
+                ),
+                if (widget.daily)
+                  const SizedBox(height: 20)
+                else
+                  SizedBox(
+                    height: 48,
+                    child: Stack(
+                      children: [
+                        const Positioned(
+                          left: 36,
+                          top: 4,
+                          child: SkyStar(size: 52, angle: -0.12),
                         ),
-                      const Expanded(child: GameBoard()),
-                      const GameControls(),
-                    ],
+                        const Positioned(
+                          right: 40,
+                          top: 16,
+                          child: SkyStar(size: 40, angle: 0.15),
+                        ),
+                        if (session != null &&
+                            session.score.comboMultiplier > 1)
+                          Center(
+                            child: Text(
+                              'COMBO x${session.score.comboMultiplier}',
+                              style:
+                                  SkyStyle.text(
+                                    18,
+                                    weight: FontWeight.w700,
+                                    color: AppColors.brandAmber,
+                                  ).copyWith(
+                                    shadows: const [
+                                      Shadow(
+                                        color: Colors.white,
+                                        blurRadius: 6,
+                                      ),
+                                    ],
+                                  ),
+                            ),
+                          ),
+                      ],
+                    ),
                   ),
+                Expanded(
+                  child: Padding(
+                    padding: const EdgeInsets.fromLTRB(10, 0, 10, 32),
+                    child: GameBoard(daily: widget.daily),
+                  ),
+                ),
+                GameControls(daily: widget.daily),
+              ],
+            ),
+        ],
       ),
     );
   }
 
   Future<void> _showComplete(GameSessionState session) async {
     final result = session.result;
-    if (result == null || !mounted) return;
+    if (result == null || !mounted) {
+      _showingOverlay = false;
+      return;
+    }
 
-    await showGeneralDialog(
-      context: context,
-      barrierDismissible: false,
-      barrierColor: Colors.black54,
-      pageBuilder: (context, anim, secondary) {
-        return Center(
-          child: _ResultCard(
-            title: session.level.levelNumber == 100
-                ? 'CAMPAIGN COMPLETE'
-                : session.level.levelNumber == 50
-                    ? 'HALFWAY THERE!'
-                    : session.level.levelNumber == 10
-                        ? "You're getting the flow."
-                        : 'LEVEL COMPLETE',
-            subtitle: session.level.levelNumber == 100
-                ? '100 / 100'
-                : session.level.levelNumber == 50
-                    ? '50 / 100'
-                    : null,
-            stars: result.stars,
-            score: result.score,
-            moves: result.movesUsed,
-            coins: result.coinsEarned,
-            perfect: result.wasPerfect,
-            onContinue: () {
-              Navigator.of(context).pop();
-              final next = session.level.levelNumber + 1;
-              if (next <= GameConstants.totalCampaignLevels) {
-                Navigator.of(this.context).pushReplacementNamed(
-                  '/game/$next',
-                );
-              } else {
-                Navigator.of(this.context).pop();
-              }
-            },
-            onReplay: () {
-              Navigator.of(context).pop();
-              ref.read(gameControllerProvider.notifier).restart();
-            },
-            onLevels: () {
-              Navigator.of(context).pop();
-              Navigator.of(this.context).pushNamedAndRemoveUntil(
-                '/levels',
-                (route) => route.settings.name == '/home' || route.isFirst,
-              );
-            },
-          ),
+    final levelNumber = session.level.levelNumber;
+    final nextLevel = levelNumber + 1;
+    final hasNext =
+        !widget.daily && nextLevel <= GameConstants.totalCampaignLevels;
+
+    await showLevelCompleteDialog(
+      context,
+      title: levelNumber >= GameConstants.totalCampaignLevels
+          ? 'CAMPAIGN COMPLETE'
+          : levelNumber == 50
+          ? 'HALFWAY THERE!'
+          : levelNumber == 10
+          ? "You're getting the flow."
+          : 'LEVEL COMPLETE',
+      subtitle: levelNumber >= GameConstants.totalCampaignLevels
+          ? '${GameConstants.totalCampaignLevels} / ${GameConstants.totalCampaignLevels}'
+          : levelNumber == 50
+          ? '50 / ${GameConstants.totalCampaignLevels}'
+          : 'Level $levelNumber',
+      stars: result.stars,
+      score: result.score,
+      moves: result.movesUsed,
+      coins: result.coinsEarned,
+      perfect: result.wasPerfect,
+      continueLabel: hasNext ? 'NEXT LEVEL' : 'DONE',
+      reducedMotion: ref.read(settingsControllerProvider).reducedMotion,
+      onContinue: (dialogContext) {
+        Navigator.of(dialogContext).pop();
+        _showingOverlay = false;
+        if (hasNext) {
+          _goToNextLevel(nextLevel);
+        } else if (mounted) {
+          Navigator.of(context).pop();
+        }
+      },
+      onReplay: (dialogContext) {
+        Navigator.of(dialogContext).pop();
+        _showingOverlay = false;
+        ref.read(gameControllerProvider.notifier).restart();
+      },
+      onLevels: (dialogContext) {
+        Navigator.of(dialogContext).pop();
+        _showingOverlay = false;
+        if (!mounted) return;
+        Navigator.of(context).pushNamedAndRemoveUntil(
+          '/levels',
+          (route) => route.settings.name == '/home' || route.isFirst,
         );
       },
     );
+    _showingOverlay = false;
   }
 
   Future<void> _showFailed(GameSessionState session) async {
-    if (!mounted) return;
+    if (!mounted) {
+      _showingOverlay = false;
+      return;
+    }
     final reason = session.failReason == ChallengeFailReason.timeUp
         ? "TIME'S UP"
         : 'OUT OF MOVES';
@@ -190,7 +259,7 @@ class _GameplayScreenState extends ConsumerState<GameplayScreen>
     await showDialog<void>(
       context: context,
       barrierDismissible: false,
-      builder: (context) => AlertDialog(
+      builder: (dialogContext) => AlertDialog(
         title: Text(reason),
         content: Text(
           session.failReason == ChallengeFailReason.timeUp
@@ -200,14 +269,16 @@ class _GameplayScreenState extends ConsumerState<GameplayScreen>
         actions: [
           TextButton(
             onPressed: () {
-              Navigator.pop(context);
-              Navigator.of(this.context).pop();
+              Navigator.pop(dialogContext);
+              _showingOverlay = false;
+              if (mounted) Navigator.of(context).pop();
             },
             child: const Text('Levels'),
           ),
           TextButton(
             onPressed: () {
-              Navigator.pop(context);
+              Navigator.pop(dialogContext);
+              _showingOverlay = false;
               ref.read(gameControllerProvider.notifier).useHint();
               ref.read(gameControllerProvider.notifier).restart();
             },
@@ -215,7 +286,8 @@ class _GameplayScreenState extends ConsumerState<GameplayScreen>
           ),
           ElevatedButton(
             onPressed: () {
-              Navigator.pop(context);
+              Navigator.pop(dialogContext);
+              _showingOverlay = false;
               ref.read(gameControllerProvider.notifier).restart();
             },
             child: const Text('Try Again'),
@@ -223,33 +295,40 @@ class _GameplayScreenState extends ConsumerState<GameplayScreen>
         ],
       ),
     );
+    _showingOverlay = false;
   }
 
   Future<void> _showPause() async {
-    if (!mounted) return;
+    if (!mounted) {
+      _showingOverlay = false;
+      return;
+    }
     await showDialog<void>(
       context: context,
       barrierDismissible: false,
-      builder: (context) => AlertDialog(
+      builder: (dialogContext) => AlertDialog(
         title: const Text('PAUSED'),
         actions: [
           TextButton(
             onPressed: () {
-              Navigator.pop(context);
-              Navigator.of(this.context).pop();
+              Navigator.pop(dialogContext);
+              _showingOverlay = false;
+              if (mounted) Navigator.of(context).pop();
             },
             child: const Text('Level Select'),
           ),
           TextButton(
             onPressed: () {
-              Navigator.pop(context);
+              Navigator.pop(dialogContext);
+              _showingOverlay = false;
               ref.read(gameControllerProvider.notifier).restart();
             },
             child: const Text('Restart'),
           ),
           ElevatedButton(
             onPressed: () {
-              Navigator.pop(context);
+              Navigator.pop(dialogContext);
+              _showingOverlay = false;
               ref.read(gameControllerProvider.notifier).resume();
             },
             child: const Text('Resume'),
@@ -257,6 +336,7 @@ class _GameplayScreenState extends ConsumerState<GameplayScreen>
         ],
       ),
     );
+    _showingOverlay = false;
   }
 }
 
@@ -284,107 +364,6 @@ class _ErrorBody extends StatelessWidget {
             ElevatedButton(onPressed: onRetry, child: const Text('Retry')),
             TextButton(onPressed: onLevels, child: const Text('Levels')),
           ],
-        ),
-      ),
-    );
-  }
-}
-
-class _ResultCard extends StatelessWidget {
-  const _ResultCard({
-    required this.title,
-    required this.stars,
-    required this.score,
-    required this.moves,
-    required this.coins,
-    required this.perfect,
-    required this.onContinue,
-    required this.onReplay,
-    required this.onLevels,
-    this.subtitle,
-  });
-
-  final String title;
-  final String? subtitle;
-  final int stars;
-  final int score;
-  final int moves;
-  final int coins;
-  final bool perfect;
-  final VoidCallback onContinue;
-  final VoidCallback onReplay;
-  final VoidCallback onLevels;
-
-  @override
-  Widget build(BuildContext context) {
-    return Material(
-      color: Theme.of(context).colorScheme.surface,
-      borderRadius: BorderRadius.circular(AppDimensions.radiusLg),
-      child: ConstrainedBox(
-        constraints: const BoxConstraints(maxWidth: 360),
-        child: Padding(
-          padding: const EdgeInsets.all(24),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Text(title, style: Theme.of(context).textTheme.headlineSmall),
-              if (subtitle != null) ...[
-                const SizedBox(height: 4),
-                Text(subtitle!, style: Theme.of(context).textTheme.titleMedium),
-              ],
-              const SizedBox(height: 12),
-              Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: List.generate(3, (i) {
-                  return Icon(
-                    i < stars ? Icons.star_rounded : Icons.star_outline_rounded,
-                    color: AppColors.brandAmber,
-                    size: 36,
-                  );
-                }),
-              ),
-              if (perfect) ...[
-                const SizedBox(height: 8),
-                Text(
-                  'PERFECT!',
-                  style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                        color: AppColors.brandTeal,
-                        fontWeight: FontWeight.w800,
-                      ),
-                ),
-              ],
-              const SizedBox(height: 16),
-              Text('Score  $score'),
-              Text('Moves  $moves'),
-              Text('Reward  +$coins coins'),
-              const SizedBox(height: 20),
-              SizedBox(
-                width: double.infinity,
-                child: ElevatedButton(
-                  onPressed: onContinue,
-                  child: const Text('CONTINUE'),
-                ),
-              ),
-              const SizedBox(height: 8),
-              Row(
-                children: [
-                  Expanded(
-                    child: OutlinedButton(
-                      onPressed: onReplay,
-                      child: const Text('Replay'),
-                    ),
-                  ),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: OutlinedButton(
-                      onPressed: onLevels,
-                      child: const Text('Levels'),
-                    ),
-                  ),
-                ],
-              ),
-            ],
-          ),
         ),
       ),
     );
