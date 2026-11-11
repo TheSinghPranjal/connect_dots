@@ -25,6 +25,7 @@ flutter:
   assets:
     - assets/levels/
     - assets/images/
+    - assets/branding/
   fonts:
     - family: Fredoka
       fonts:
